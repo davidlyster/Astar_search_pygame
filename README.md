@@ -26,6 +26,7 @@ Added the executable script here which can be run by moving the directory contai
 python setup.py build
 ```
 From there, you should get a build directory, within it will be an executable that will run your script. If that doesn't produce the right .exe file you can try the following...
+
 Generate Mac executable on Windows
 ```bash
 python setup.py bdist_msi
