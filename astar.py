@@ -1,4 +1,5 @@
 import pygame
+from queue import PriorityQueue
 
 
 # set colours for different node types
@@ -22,7 +23,7 @@ class Node:
     - list of it's neighbours
     """
 
-    def __init__(self, row, col, width):
+    def __init__(self, row, col, width, grid_row_count):
         self.row = row
         self.col = col
         self.width = width
@@ -30,6 +31,7 @@ class Node:
         self.y = col * width
         self.colour = empty_node_colour
         self.neighbours = []
+        self.grid_row_count = grid_row_count    # boundary of the grid
 
     def get_position(self):
         return self.row, self.col
@@ -79,6 +81,38 @@ class Node:
         set node to be a final path node (colour)
         """
         self.colour = final_path_node_colour
+
+    def update_neighbours(self, grid):
+        """
+        Check all neighbouring nodes and at each valid node to this Nodes neighbours list
+        i.e. walls are invalid, can't add node that isn't on grid
+        """
+        # empty this every time as each node will have a new set of neighbours
+        self.neighbours = []
+
+        # Check nodes in all 4 directions and add them to neighbours if they are valid
+        # NOTE: for the UP and DOWN checks, checking the row below is row+1 and above is -1 which is counterintuitive considering how graphs normally work
+        #       but pygame starts with x,y:=0,0 in the left so the oup and down movements are reversed
+
+        # DOWN
+        # if the row below is in the grid - if the node below this node is not a barrier
+        if self.row < self.grid_row_count-1 and not grid[self.row+1][self.col].is_wall():
+            self.neighbours.append(grid[self.row+1][self.col])
+            
+        # LEFT
+        # if the column to the left is in the grid - if the node to the left of this node is not a barrier
+        if self.col > 0 and not grid[self.row][self.col-1].is_wall():
+            self.neighbours.append(grid[self.row][self.col-1])
+
+        # UP
+        # if the row above is in the grid - if the node below this node is not a barrier
+        if self.row > 0 and not grid[self.row-1][self.col].is_wall():
+            self.neighbours.append(grid[self.row-1][self.col])
+
+        # RIGHT
+        # if the column to the right is in the grid - if the node to the right of this node is not a barrier
+        if self.col < self.grid_row_count-1 and not grid[self.row][self.col+1].is_wall():
+            self.neighbours.append(grid[self.row][self.col+1])
 
     #########################################
     ##### END STATUS/COLOUR SET METHODS #####
@@ -136,7 +170,7 @@ def make_grid(row_count, width):
     for x in range(row_count):
         grid.append([])
         for y in range(row_count):
-            node = Node(x, y, node_width)
+            node = Node(x, y, node_width, row_count)
             grid[x].append(node)
 
     return grid
@@ -193,6 +227,125 @@ def get_click_position(position, row_count, width):
     return row, col
 
 
+def a_star_heuristic(p1, p2):
+    """
+    function used to make heurisitic guess at distance between two points
+    used to guide the A* search
+    the points come in as x,y so return the distance between them by comparing x,x and y,y using manhattan ('L') distancing
+    we use manhattan instead of euclidian (hypotenuse) as we cannot go sideways on the graph (i.e. moving from 1,1 to 2,2, is 3 steps 1,1, 1,2, 2,2)
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+
+    return abs(x1-x2) + abs(y1-y2)
+
+
+def reconstruct_path(came_from, current, draw):
+    # TODO
+    return
+
+
+# THE VIP
+def a_star_search(draw_func, grid, start, end):
+    """
+    A* Search  Algorithm
+    ====================
+    A* is an informed Search (the algorithm know the location of the end node when starting) algorithm that is always 
+    guaranteed to find the shortest path between a start and end node.
+    It does so by making use of a heuristic function (a_star_heuristic) to determine which search path to extend.
+    This is based on the current cost of the path plus the expected cost fo the rest of the path (guessed by heuristic).
+    This is formulated as:
+    f(n) = g(n) + h(n) 
+    where g(n) is the cost of the current path from start to the current node, 
+    h(n) is the result of the heuristic function used to guess the expected cost of the next node to the end node
+    and f(n) ("f score") is the addition of these, the value of which is used to direct the search
+
+    Primary characteristics:
+    + Complete solution     - If the solution exist, it is guaranteed to be found
+    + Optimal Solution      - Guaranteed to find the shortest path
+    - Complexity (O(b^d))   - Stores all observed nodes in memory
+
+    So for each node that is being evaluated we have to record its distance from the start (along the current path) and its f score.
+    Each node will also have alist of neighbours that will be evaluated using the above formula until the final node is reached.
+    """
+
+    # the open set is the list of discovered nodes that need to be evaluated to see if they are to be expanded further 
+    open_set = PriorityQueue()
+    # IMPORTANT - the reason we are using the priority queue is that PQ.get() will return the node with the lowest score
+    #             i.e. first compares f-score, then compares path_distance
+    #             because of this its crucial that the order of the elements in the queue is f-score, path_length, node
+    # ALSO, we include the path length because if two nodes have the same f score we can see which has lowest path length and expand into that node
+    # open_set.put("f score", "path distance to here", "next nieghbor to evaluate")
+    open_set.put((0, 0, start))
+    # PriorityQueues have no way to check if an element is contained in them so use open_set_xyxy to keep track of nodes in the PriorityQueue
+    open_set_xyxy = {start}
+
+    came_from = {}  # this will contain the previous node along the shortest path
+
+    # make maps of f and g scores for every node with a default of infinity
+    g_scores = {node: float('inf') for row in grid for node in row}
+    f_scores = {node: float('inf') for row in grid for node in row}
+
+    # define values for starting node
+    g_scores[start] = 0
+    f_scores[start] = a_star_heuristic(start.get_position(), end.get_position())
+    
+    # get coordinates of end node which will be used every time the heuristic is called
+    end_node_pos = end.get_position()
+
+    # keep track of length of observed path, update on every iteration
+    path_length = 0
+    while not open_set.empty():
+
+        # let the player quit the game if the want
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+
+        current_node = open_set.get()[2]    # last element is the next node
+        open_set_xyxy.remove(current_node)  # the node does not need to be re-evaluated later so remove from open_set_xyxy
+
+        if current_node == end:
+            # draw the shortest path
+            pass  # TODO delete later
+            return True
+
+        # get f score for all neighbours
+        for neighbour in current_node.neighbours:
+            # f(n) = g(n) + h(n) 
+            # NOTE: we're adding 1 here because the distance from each node to its neighbour is 1
+            # obviously this is not the case normally for this algorithm like in google maps where different roads have different lengths
+            g_score = g_scores[current_node] + 1
+
+            # if this path to neighbour is better than any previous one
+            if g_score < g_scores[neighbour]:
+
+                came_from[neighbour] = current_node
+                g_scores[neighbour] = g_score
+                h_score = a_star_heuristic(neighbour.get_position(), end_node_pos)
+                f_score = g_score + h_score
+
+                f_scores[neighbour] = f_score
+
+                if neighbour not in open_set_xyxy:
+                    path_length += 1
+                    # open_set.put("f score", "path distance to here", "next nieghbor to evaluate")
+                    open_set.put((f_scores[neighbour], path_length, neighbour))
+                    open_set_xyxy.add(neighbour)
+
+                    # change node colour as it is now open/being evaluated
+                    neighbour.set_being_searched()
+
+        # now redraw the grid
+        draw_func()
+
+        # set the node colour to show it has been searched but do not do it for the start node as we want it to keep its colour as the algorithm progresses
+        if current_node != start:
+            current_node.set_been_searched()
+
+    return False
+
+
 def run_program(window, width, row_count):
     """
     This is the main function that runs the program and tracks interaction with the game window
@@ -218,6 +371,7 @@ def run_program(window, width, row_count):
             # if the exit button is pressed
             if event.type == pygame.QUIT:
                 active = False
+                pygame.quit()
 
             # if the user left clicks
             if pygame.mouse.get_pressed()[0]:
@@ -243,7 +397,7 @@ def run_program(window, width, row_count):
 
 
             """
-            xyxy let user make changes before running with right click 'deletes'
+            TODO: let user make changes before running with right click 'deletes'
             # if the user right clicks
             elif pygame.mouse.get_pressed()[2]:
                 pos = pygame.mouse.get_pos()
@@ -251,8 +405,17 @@ def run_program(window, width, row_count):
             """
 
             # if the user pressed a key
-            # if event.type == pygame.KEYDOWN:
-    pygame.quit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and not algorithm_running:
+                    for row in grid:
+                        for node in row:
+                            node.update_neighbours(grid)
+
+                    # pass in function as lambda here so within the a_star_search function we can simply call 'draw_func()' (a_star_search argument name)
+                    # to run draw_grid(window, grid, row_count, width) which contains variables in the scope of this code block not within a_star_search scope
+                    a_star_search(lambda: draw_grid(window, grid, row_count, width), grid, start_node, end_node)
+
+                    algorithm_running = False
 
 
 ##############################################
@@ -265,11 +428,11 @@ def run_program(window, width, row_count):
 pygame.display.set_caption("A* Search Visualisation")
 
 # set size of output window
-game_window_width = 800
+game_window_width = 700
 game_window = pygame.display.set_mode((game_window_width, game_window_width))
 
 # set dimension of square graph
-total_row_count = 40
+total_row_count = 50
 
 # RUN THE PROGRAM
 run_program(game_window, game_window_width, total_row_count)
