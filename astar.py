@@ -240,9 +240,17 @@ def a_star_heuristic(p1, p2):
     return abs(x1-x2) + abs(y1-y2)
 
 
-def reconstruct_path(came_from, current, draw):
-    # TODO
-    return
+def reconstruct_path(came_from, current, draw_func):
+    """
+    go along the successful path and change every node to the final path colour
+    start node will be in came_from so just change its colour back at the end
+    use the draw_func to persistently redraw the grid until the final path is on the screen
+    """
+    while current in came_from:
+        current = came_from[current]
+        current.set_final_path_node()
+        draw_func()
+    current.set_start_node()
 
 
 # THE VIP
@@ -250,15 +258,15 @@ def a_star_search(draw_func, grid, start, end):
     """
     A* Search  Algorithm
     ====================
-    A* is an informed Search (the algorithm know the location of the end node when starting) algorithm that is always 
+    A* is an informed Search (the algorithm knows the location of the end node when starting) algorithm that is always 
     guaranteed to find the shortest path between a start and end node.
     It does so by making use of a heuristic function (a_star_heuristic) to determine which search path to extend.
-    This is based on the current cost of the path plus the expected cost fo the rest of the path (guessed by heuristic).
+    This is based on the current cost of the path plus the expected cost of the rest of the path (guessed by heuristic).
     This is formulated as:
     f(n) = g(n) + h(n) 
     where g(n) is the cost of the current path from start to the current node, 
-    h(n) is the result of the heuristic function used to guess the expected cost of the next node to the end node
-    and f(n) ("f score") is the addition of these, the value of which is used to direct the search
+    h(n) is the result of the heuristic function used to guess the expected cost/path length from the next node to the end node
+    and f(n) ("f score") is the addition of these two, the value of which is used to direct the search
 
     Primary characteristics:
     + Complete solution     - If the solution exist, it is guaranteed to be found
@@ -271,16 +279,17 @@ def a_star_search(draw_func, grid, start, end):
 
     # the open set is the list of discovered nodes that need to be evaluated to see if they are to be expanded further 
     open_set = PriorityQueue()
-    # IMPORTANT - the reason we are using the priority queue is that PQ.get() will return the node with the lowest score
-    #             i.e. first compares f-score, then compares path_distance
-    #             because of this its crucial that the order of the elements in the queue is f-score, path_length, node
-    # ALSO, we include the path length because if two nodes have the same f score we can see which has lowest path length and expand into that node
+    # IMPORTANT
+    # the reason we are using the priority queue is that PQ.get() will return the node with the lowest score i.e. first compares f-score, then compares path_distance
+    # because of this its crucial that the order of the elements in the queue is f-score, path_length, node
+
     # open_set.put("f score", "path distance to here", "next nieghbor to evaluate")
     open_set.put((0, 0, start))
-    # PriorityQueues have no way to check if an element is contained in them so use open_set_xyxy to keep track of nodes in the PriorityQueue
-    open_set_xyxy = {start}
 
-    came_from = {}  # this will contain the previous node along the shortest path
+    # PriorityQueues have no way to check if an element is contained in them so use open_set_dict to keep track of nodes in the PriorityQueue
+    open_set_dict = {start}
+
+    came_from = {}  # this be a dict of observed node and where they came from
 
     # make maps of f and g scores for every node with a default of infinity
     g_scores = {node: float('inf') for row in grid for node in row}
@@ -303,11 +312,14 @@ def a_star_search(draw_func, grid, start, end):
                 pygame.quit()
 
         current_node = open_set.get()[2]    # last element is the next node
-        open_set_xyxy.remove(current_node)  # the node does not need to be re-evaluated later so remove from open_set_xyxy
+        open_set_dict.remove(current_node)  # the node does not need to be re-evaluated later so remove from open_set_dict
 
         if current_node == end:
             # draw the shortest path
-            pass  # TODO delete later
+            # current_node(arg) will be the end node if reach this code block
+            # the lambda drawing function is again passed in here  to allow the reconstruct_path func to run it properly without variable being passed all around the code
+            reconstruct_path(came_from, end, draw_func)
+            end.set_end_node()
             return True
 
         # get f score for all neighbours
@@ -320,18 +332,20 @@ def a_star_search(draw_func, grid, start, end):
             # if this path to neighbour is better than any previous one
             if g_score < g_scores[neighbour]:
 
+                # record the previous node (used in constructing final path)
                 came_from[neighbour] = current_node
+
                 g_scores[neighbour] = g_score
                 h_score = a_star_heuristic(neighbour.get_position(), end_node_pos)
                 f_score = g_score + h_score
 
                 f_scores[neighbour] = f_score
 
-                if neighbour not in open_set_xyxy:
+                if neighbour not in open_set_dict:
                     path_length += 1
                     # open_set.put("f score", "path distance to here", "next nieghbor to evaluate")
                     open_set.put((f_scores[neighbour], path_length, neighbour))
-                    open_set_xyxy.add(neighbour)
+                    open_set_dict.add(neighbour)
 
                     # change node colour as it is now open/being evaluated
                     neighbour.set_being_searched()
