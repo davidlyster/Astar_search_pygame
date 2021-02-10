@@ -15,7 +15,7 @@ Primary characteristics:
 
 | +/-        | Characteristic           | Explanation  |
 | ------------- |:-------------:| :-----:|
-| +      |  Complete | If the solution exist, it is guaranteed to be found |
+| +      |  Complete | If the solution exists, it is guaranteed to be found |
 | +     | Optimal |   Guaranteed to find the shortest path |
 | - | Complex - O(b^d^) |    Stores all observed nodes in memory |
 
